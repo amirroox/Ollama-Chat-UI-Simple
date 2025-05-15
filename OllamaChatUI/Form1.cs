@@ -3,17 +3,80 @@ using System.Net.Http;
 using System.Text;
 using System.Windows.Forms;
 using Newtonsoft.Json;
+using System.Drawing.Text;
+using System.IO;
+using System.Reflection;
+using System.Drawing;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 
 namespace OllamaChatUI
 {
-    public partial class Form1: Form
+    public partial class Form1 : Form
     {
         private readonly HttpClient httpClient = new HttpClient();
+        private PrivateFontCollection privateFonts = new PrivateFontCollection();
+
+        // load font from memory
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, [In] ref uint pcFonts);
 
         public Form1()
         {
             InitializeComponent();
+            LoadCustomFont();
+
+            this.AcceptButton = btnSend;  // Enter With KeyBoard
+        }
+
+        private void LoadCustomFont()
+        {
+            try
+            {
+                string resourceName = "OllamaChatUI.Fonts.Vazirmatn-Medium.ttf"; // Namespace + Folder + FileName 
+
+                using (Stream fontStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                {
+                    if (fontStream == null)
+                    {
+                        // debugging
+                        string[] resources = Assembly.GetExecutingAssembly().GetManifestResourceNames();
+                        string allResources = string.Join("\n", resources);
+                        MessageBox.Show($"Font not found. Available resources:\n{allResources}");
+                        return;
+                    }
+
+                    // read font byte
+                    byte[] fontData = new byte[fontStream.Length];
+                    fontStream.Read(fontData, 0, (int)fontStream.Length);
+
+                    // add font temp & clear memory
+                    uint dummy = 0;
+                    IntPtr fontPtr = Marshal.AllocCoTaskMem(fontData.Length);
+                    Marshal.Copy(fontData, 0, fontPtr, fontData.Length);
+                    AddFontMemResourceEx(fontPtr, (uint)fontData.Length, IntPtr.Zero, ref dummy);
+                    privateFonts.AddMemoryFont(fontPtr, fontData.Length);
+                    Marshal.FreeCoTaskMem(fontPtr);
+
+                    // Apply
+                    if (privateFonts.Families.Length > 0)
+                    {
+                        Font customFont = new Font(privateFonts.Families[0], 11f, FontStyle.Regular);
+
+                        txtUserInput.Font = customFont;
+                        txtResponse.Font = customFont;
+                        btnSend.Font = customFont;
+                    }
+                    else
+                    {
+                        MessageBox.Show("The font was not loaded successfully.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error loading font: " + ex.Message);
+            }
         }
 
         private async void button1_Click(object sender, EventArgs e)
@@ -21,7 +84,13 @@ namespace OllamaChatUI
             string userMessage = txtUserInput.Text.Trim();
             if (string.IsNullOrEmpty(userMessage)) return;
 
-            txtResponse.Text += $"👤 شما: {userMessage}\n";
+            ApplyDirectionality(txtUserInput, userMessage);
+            ApplyDirectionality(txtResponse, userMessage);
+
+            txtResponse.Text += $"👤 You: {userMessage}\n";
+
+            if (privateFonts.Families.Length > 0)
+                txtResponse.Font = new Font(privateFonts.Families[0], 11f, FontStyle.Regular);
 
             var requestBody = new
             {
@@ -42,14 +111,49 @@ namespace OllamaChatUI
 
                 dynamic json = JsonConvert.DeserializeObject(responseBody);
                 string responseText = json.message.content;
+                ApplyDirectionality(txtResponse, responseText);
 
                 txtResponse.Text += $"🤖 Ollama: {responseText}\n\n";
+
+                if (privateFonts.Families.Length > 0)
+                    txtResponse.Font = new Font(privateFonts.Families[0], 11f, FontStyle.Regular);
+
                 txtUserInput.Clear();
+
             }
             catch (Exception ex)
             {
-                MessageBox.Show("خطا در ارتباط با Ollama: " + ex.Message);
+                txtResponse.Text += "Error Connection Ollama: " + ex.Message;
             }
         }
+
+        private bool IsPersian(string text)
+        {
+            // check persian char
+            foreach (char c in text)
+            {
+                if (c >= 0x0600 && c <= 0x06FF) return true;
+            }
+            return false;
+        }
+
+        private void ApplyDirectionality(Control control, string text)
+        {
+            if (IsPersian(text))
+            {
+                control.RightToLeft = RightToLeft.Yes;
+
+                // MultiLine Fix
+                if (control is TextBox tb && tb.Multiline)
+                    tb.TextAlign = HorizontalAlignment.Right;
+            }
+            else
+            {
+                control.RightToLeft = RightToLeft.No;
+                if (control is TextBox tb && tb.Multiline)
+                    tb.TextAlign = HorizontalAlignment.Left;
+            }
+        }
+
     }
 }
