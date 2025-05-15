@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices;
+using System.Drawing.Drawing2D;
 
 namespace OllamaChatUI
 {
@@ -26,7 +27,27 @@ namespace OllamaChatUI
             InitializeComponent();
             LoadCustomFont();
 
+            RoundControl(txtUserInput, 6);
+            RoundControl(txtResponse, 6);
+
             this.AcceptButton = btnSend;  // Enter With KeyBoard
+        }
+
+
+        private void RoundControl(Control control, int radius)
+        {
+            Rectangle bounds = new Rectangle(0, 0, control.Width, control.Height);
+            GraphicsPath path = new GraphicsPath();
+
+            int d = radius * 2;
+            path.StartFigure();
+            path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+            path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+            path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+            path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+
+            control.Region = new Region(path);
         }
 
         private void LoadCustomFont()
